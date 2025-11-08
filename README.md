@@ -1,1 +1,1 @@
-# Nya(t): Yet Another Telegram
+# Nya~ Yet Another Telegram
