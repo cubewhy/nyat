@@ -4,13 +4,21 @@ use crate::helpers::spawn_app;
 async fn success_with_provided_username_and_strong_password() {
     let app = spawn_app().await;
 
-    let res = app.register("user0", "strong_password").await;
+    let username = "user0";
+    let res = app.register(username, "strong_password").await;
 
     assert_eq!(res.status().as_u16(), 200);
 
     let body: serde_json::Value = res.json().await.unwrap();
     // the response should contains a token
     assert!(body.as_object().unwrap().get("token").is_some());
+
+    // check the user is really added into the database
+    let user = sqlx::query!("SELECT id FROM users WHERE username = $1", username)
+        .fetch_optional(&app.db)
+        .await
+        .unwrap();
+    assert!(user.is_some());
 }
 
 #[tokio::test]

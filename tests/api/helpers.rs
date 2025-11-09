@@ -26,6 +26,8 @@ static TRACING: LazyLock<()> = LazyLock::new(|| {
 pub struct TestApp {
     pub address: String,
     pub port: u16,
+    pub db: PgPool,
+    pub test_user: TestUser,
 
     http_client: reqwest::Client,
 }
@@ -34,6 +36,18 @@ impl TestApp {
     pub async fn register(&self, username: &str, password: &str) -> reqwest::Response {
         self.http_client
             .post(format!("{}/user/register", self.address))
+            .json(&json!({
+                "username": username,
+                "password": password
+            }))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    pub async fn login(&self, username: &str, password: &str) -> reqwest::Response {
+        self.http_client
+            .post(format!("{}/user/login", self.address))
             .json(&json!({
                 "username": username,
                 "password": password
@@ -63,7 +77,10 @@ pub async fn spawn_app() -> TestApp {
     };
 
     // Create and migrate the database
-    configure_database(&config.database).await;
+    let db = configure_database(&config.database).await;
+
+    // insert the test admin user into the database
+    let test_user = insert_test_user(&db).await;
 
     // build the application
     let app = Application::build(config).await.unwrap();
@@ -75,7 +92,8 @@ pub async fn spawn_app() -> TestApp {
     TestApp {
         port,
         address: format!("http://localhost:{port}"),
-
+        db,
+        test_user,
         http_client: reqwest::Client::new(),
     }
 }
@@ -106,4 +124,30 @@ async fn configure_database(config: &DatabaseConfig) -> PgPool {
         .await
         .expect("Failed to migrate the database");
     connection_pool
+}
+
+pub struct TestUser {
+    pub id: i64,
+    pub username: String,
+    pub password: String,
+}
+
+async fn insert_test_user(pool: &PgPool) -> TestUser {
+    let username = "test_user";
+    let password = "testtest";
+    let test_user_id = sqlx::query!(
+        "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING (id);",
+        username,
+        password
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+    .id;
+
+    TestUser {
+        id: test_user_id,
+        username: username.to_string(),
+        password: password.to_string(),
+    }
 }
