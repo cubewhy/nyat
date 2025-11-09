@@ -7,7 +7,7 @@ use tracing_actix_web::TracingLogger;
 
 use crate::{
     configuration::Settings,
-    routes::{login, register},
+    routes::{create_pm, login, register},
 };
 
 pub struct Application {
@@ -68,6 +68,7 @@ async fn run(
             .app_data(token_secret.clone())
             .route("/user/register", web::post().to(register))
             .route("/user/login", web::post().to(login))
+            .route("/chat/pm", web::post().to(create_pm))
     })
     .listen(lst)?
     .run();

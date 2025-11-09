@@ -10,6 +10,7 @@ use tracing::{Level, instrument};
 
 use crate::{
     auth::{Credentials, CredentialsVerifyError, generate_token, hash_password, verify_password},
+    error::response_error,
     startup::{TokenExpireInterval, TokenSecret},
     telemetry::spawn_blocking_with_tracing,
 };
@@ -101,7 +102,7 @@ impl ResponseError for RegisterError {
     }
 
     fn error_response(&self) -> actix_web::HttpResponse<actix_web::body::BoxBody> {
-        let error = match self {
+        let error_msg = match self {
             RegisterError::UnknownError(_) => "Unknown error",
             RegisterError::UsernameExists => "Username was taken",
             RegisterError::CredentialsError(credentials_error) => match credentials_error {
@@ -114,9 +115,7 @@ impl ResponseError for RegisterError {
             },
         };
 
-        HttpResponse::build(self.status_code()).json(json!({
-            "error": error
-        }))
+        response_error(self.status_code(), error_msg)
     }
 }
 
@@ -202,13 +201,11 @@ impl ResponseError for LoginError {
     }
 
     fn error_response(&self) -> HttpResponse<actix_web::body::BoxBody> {
-        let error_string: &'static str = match self {
+        let error_msg: &'static str = match self {
             LoginError::BadCredentials => "Bad credentials",
             LoginError::UnknownError(_) => "Internal Server Error",
         };
 
-        HttpResponse::build(self.status_code()).json(Json(json!({
-            "error": error_string
-        })))
+        response_error(self.status_code(), error_msg)
     }
 }
