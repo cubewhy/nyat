@@ -22,7 +22,13 @@ impl Application {
         let port = listener.local_addr()?.port();
 
         // build the server
-        let server = run(listener, settings.database.db_url()).await?;
+        let server = run(
+            listener,
+            settings.database.db_url(),
+            settings.security.token_expire_interval,
+            Bytes::from(settings.security.token_secret),
+        )
+        .await?;
 
         Ok(Self { server, port })
     }
@@ -39,16 +45,24 @@ impl Application {
 pub struct TokenExpireInterval(pub usize);
 pub struct TokenSecret(pub Bytes);
 
-async fn run(lst: TcpListener, db_url: String) -> anyhow::Result<Server> {
+async fn run(
+    lst: TcpListener,
+    db_url: String,
+    token_expire_interval: usize,
+    token_secret: Bytes,
+) -> anyhow::Result<Server> {
     // connect to postgres
     let pool = web::Data::new(PgPool::connect(&db_url).await?);
 
-    // TODO: inject TokenExpireInterval, TokenSecret
+    let token_expire_interval = web::Data::new(TokenExpireInterval(token_expire_interval));
+    let token_secret = web::Data::new(TokenSecret(token_secret));
 
     let server = HttpServer::new(move || {
         App::new()
             .wrap(TracingLogger::default())
             .app_data(pool.clone())
+            .app_data(token_expire_interval.clone())
+            .app_data(token_secret.clone())
             .route("/user/register", web::post().to(register))
     })
     .listen(lst)?

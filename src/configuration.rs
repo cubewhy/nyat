@@ -5,6 +5,7 @@ use url::Url;
 pub struct Settings {
     pub application: ApplicationConfig,
     pub database: DatabaseConfig,
+    pub security: SecurityConfig,
 }
 
 #[derive(serde::Deserialize)]
@@ -16,6 +17,12 @@ pub struct ApplicationConfig {
 #[derive(serde::Deserialize, Clone)]
 pub struct DatabaseConfig {
     pub url: Url,
+}
+
+#[derive(serde::Deserialize)]
+pub struct SecurityConfig {
+    pub token_expire_interval: usize,
+    pub token_secret: String,
 }
 
 impl DatabaseConfig {

@@ -29,7 +29,7 @@ impl Credentials {
 
         // check the password length
         let password_length = password.len();
-        if password_length < 8 || password_length > 256 {
+        if !(8..=256).contains(&password_length) {
             return Err(CredentialsError::BadPasswordLength);
         }
 

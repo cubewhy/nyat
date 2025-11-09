@@ -4,3 +4,8 @@ application:
 
 database:
   url: postgres://postgres:password@localhost:5432/nya
+
+security:
+  token_secret: changemeinproduction
+  # 2 days
+  token_expire_interval: 172800
