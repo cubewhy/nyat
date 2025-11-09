@@ -173,7 +173,7 @@ async fn authorize_user(credentials: &Credentials, pool: &PgPool) -> Result<i64,
     .context("Failed to query user")?
     .ok_or_else(|| LoginError::BadCredentials)?;
 
-    let hashed_password = user.password.context("User does not have a password")?;
+    let hashed_password = user.password;
 
     if !verify_password(&credentials.password, &hashed_password)
         .context("Failed to verify password")?

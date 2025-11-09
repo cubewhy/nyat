@@ -1,7 +1,7 @@
-CREATE TABLE users(
-  id bigint GENERATED ALWAYS AS IDENTITY,
-  username text,
-  password text,
+CREATE TABLE IF NOT EXISTS users(
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  username text NOT NULL,
+  password text NOT NULL,
 
-  created_at timestamptz default current_timestamp
+  created_at timestamptz NOT NULL DEFAULT current_timestamp
 );

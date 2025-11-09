@@ -1,8 +1,9 @@
+use anyhow::Context;
 use sqlx::Executor;
 use std::sync::LazyLock;
 
 use nyat::{
-    auth::hash_password,
+    auth::{generate_token, hash_password},
     configuration::{DatabaseConfig, load_config},
     startup::Application,
     telemetry::{get_subscriber, init_subscriber},
@@ -57,6 +58,54 @@ impl TestApp {
             .await
             .unwrap()
     }
+
+    pub async fn create_test_user(&self) -> TestUser {
+        // request the register api
+        let username = Uuid::new_v4().to_string().replace("-", "_");
+        let password = Uuid::new_v4().to_string();
+        let res = self.register(&username, &password).await;
+
+        // make sure the request success
+        assert_eq!(res.status().as_u16(), 200);
+
+        // extract the token field from the response
+        let json = res.json::<serde_json::Value>().await.unwrap();
+        let json = json.as_object().unwrap();
+
+        let token = json
+            .get("token")
+            .context("Field \"token\" not exist on register response")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // query the user id from the database
+        let id = sqlx::query!("SELECT id FROM users WHERE username = $1", username)
+            .fetch_one(&self.db)
+            .await
+            .unwrap()
+            .id;
+
+        TestUser {
+            id,
+            username,
+            password,
+            token,
+        }
+    }
+
+    pub async fn create_pm(&self, token: &str, peer_username: &str) -> reqwest::Response {
+        self.http_client
+            .post(format!("{}/chat/pm", self.address))
+            .json(&json!({
+                "peer_username": peer_username
+            }))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+    }
 }
 
 pub async fn spawn_app() -> TestApp {
@@ -81,7 +130,7 @@ pub async fn spawn_app() -> TestApp {
     let db = configure_database(&config.database).await;
 
     // insert the test admin user into the database
-    let test_user = insert_test_user(&db).await;
+    let test_user = insert_test_user(&db, config.security.token_secret.as_bytes()).await;
 
     // build the application
     let app = Application::build(config).await.unwrap();
@@ -131,9 +180,10 @@ pub struct TestUser {
     pub id: i64,
     pub username: String,
     pub password: String,
+    pub token: String,
 }
 
-async fn insert_test_user(pool: &PgPool) -> TestUser {
+async fn insert_test_user(pool: &PgPool, token_secret: &[u8]) -> TestUser {
     let username = "test_user";
     let password = "testtest";
     let hashed_password = hash_password(password).unwrap();
@@ -147,9 +197,13 @@ async fn insert_test_user(pool: &PgPool) -> TestUser {
     .unwrap()
     .id;
 
+    // generate the token for test user
+    let token = generate_token(test_user_id, 3600, token_secret).unwrap();
+
     TestUser {
         id: test_user_id,
         username: username.to_string(),
         password: password.to_string(),
+        token,
     }
 }
