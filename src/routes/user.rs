@@ -9,7 +9,7 @@ use sqlx::PgPool;
 use tracing::{Level, instrument};
 
 use crate::{
-    auth::{Credentials, CredentialsError, generate_token, hash_password},
+    auth::{Credentials, CredentialsVerifyError, generate_token, hash_password, verify_password},
     startup::{TokenExpireInterval, TokenSecret},
     telemetry::spawn_blocking_with_tracing,
 };
@@ -83,7 +83,7 @@ pub enum RegisterError {
     #[error("Username was taken")]
     UsernameExists,
     #[error("Credentials error")]
-    CredentialsError(#[from] CredentialsError),
+    CredentialsError(#[from] CredentialsVerifyError),
     #[error("Unknown error: {0}")]
     UnknownError(#[from] anyhow::Error),
 }
@@ -94,9 +94,8 @@ impl ResponseError for RegisterError {
             RegisterError::UnknownError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             RegisterError::UsernameExists => StatusCode::BAD_REQUEST,
             RegisterError::CredentialsError(credentials_error) => match credentials_error {
-                CredentialsError::BadPasswordLength | CredentialsError::InvalidCharacter => {
-                    StatusCode::BAD_REQUEST
-                }
+                CredentialsVerifyError::BadPasswordLength
+                | CredentialsVerifyError::InvalidCharacter => StatusCode::BAD_REQUEST,
             },
         }
     }
@@ -106,10 +105,10 @@ impl ResponseError for RegisterError {
             RegisterError::UnknownError(_) => "Unknown error",
             RegisterError::UsernameExists => "Username was taken",
             RegisterError::CredentialsError(credentials_error) => match credentials_error {
-                CredentialsError::BadPasswordLength => {
+                CredentialsVerifyError::BadPasswordLength => {
                     "Password length not match the requirement: only length in the range 8-256 is acceptable"
                 }
-                CredentialsError::InvalidCharacter => {
+                CredentialsVerifyError::InvalidCharacter => {
                     "Invalid characters found in username or password"
                 }
             },
@@ -118,5 +117,98 @@ impl ResponseError for RegisterError {
         HttpResponse::build(self.status_code()).json(json!({
             "error": error
         }))
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct LoginModel {
+    username: String,
+    password: String,
+}
+
+#[instrument(
+    name = "Login",
+    skip(payload, pool, token_expire_interval, token_secret)
+)]
+pub async fn login(
+    payload: Json<LoginModel>,
+    pool: web::Data<PgPool>,
+    token_expire_interval: web::Data<TokenExpireInterval>,
+    token_secret: web::Data<TokenSecret>,
+) -> Result<Json<Value>, LoginError> {
+    let payload = payload.into_inner();
+    // convert payload into credentials
+    let credentials = Credentials {
+        username: payload.username,
+        password: payload.password,
+    };
+
+    // process auth flow for user
+    let user_id: i64 = authorize_user(&credentials, &pool).await?;
+
+    // generate token
+    let token = generate_token(
+        user_id,
+        token_expire_interval.into_inner().0,
+        &token_secret.into_inner().0,
+    )?;
+
+    Ok(Json(json!({
+        "token": token
+    })))
+}
+
+#[instrument(
+    name = "Authorize user"
+    skip(credentials, pool)
+)]
+async fn authorize_user(credentials: &Credentials, pool: &PgPool) -> Result<i64, LoginError> {
+    // find the user in the users table
+    let user = sqlx::query!(
+        "SELECT id, password FROM users WHERE username = $1",
+        credentials.username
+    )
+    .fetch_optional(pool)
+    .await
+    .context("Failed to query user")?
+    .ok_or_else(|| LoginError::BadCredentials)?;
+
+    let hashed_password = user.password.context("User does not have a password")?;
+
+    if !verify_password(&credentials.password, &hashed_password)
+        .context("Failed to verify password")?
+    {
+        // Password didn't match
+        return Err(LoginError::BadCredentials);
+    }
+
+    Ok(user.id)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum LoginError {
+    #[error("Bad credentials")]
+    BadCredentials,
+    #[error("Unknown error: {0}")]
+    UnknownError(#[from] anyhow::Error),
+}
+
+impl ResponseError for LoginError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            LoginError::BadCredentials => StatusCode::UNAUTHORIZED,
+            LoginError::UnknownError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    fn error_response(&self) -> HttpResponse<actix_web::body::BoxBody> {
+        let error_string: &'static str = match self {
+            LoginError::BadCredentials => "Bad credentials",
+            LoginError::UnknownError(_) => "Internal Server Error",
+        };
+
+        HttpResponse::build(self.status_code()).json(Json(json!({
+            "error": error_string
+        })))
     }
 }

@@ -2,6 +2,7 @@ use sqlx::Executor;
 use std::sync::LazyLock;
 
 use nyat::{
+    auth::hash_password,
     configuration::{DatabaseConfig, load_config},
     startup::Application,
     telemetry::{get_subscriber, init_subscriber},
@@ -135,10 +136,11 @@ pub struct TestUser {
 async fn insert_test_user(pool: &PgPool) -> TestUser {
     let username = "test_user";
     let password = "testtest";
+    let hashed_password = hash_password(password).unwrap();
     let test_user_id = sqlx::query!(
         "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING (id);",
         username,
-        password
+        hashed_password
     )
     .fetch_one(pool)
     .await

@@ -1,5 +1,7 @@
 use argon2::Argon2;
+use argon2::PasswordHash;
 use argon2::PasswordHasher;
+use argon2::PasswordVerifier;
 use argon2::password_hash::SaltString;
 use argon2::password_hash::rand_core::OsRng;
 use chrono::Utc;
@@ -18,19 +20,19 @@ impl Credentials {
     pub fn parse(
         username: impl Into<String>,
         password: impl Into<String>,
-    ) -> Result<Self, CredentialsError> {
+    ) -> Result<Self, CredentialsVerifyError> {
         let username = username.into();
         let password = password.into();
 
         // check the chars in username and password
         if !username.is_ascii() || !password.is_ascii() {
-            return Err(CredentialsError::InvalidCharacter);
+            return Err(CredentialsVerifyError::InvalidCharacter);
         }
 
         // check the password length
         let password_length = password.len();
         if !(8..=256).contains(&password_length) {
-            return Err(CredentialsError::BadPasswordLength);
+            return Err(CredentialsVerifyError::BadPasswordLength);
         }
 
         Ok(Self { username, password })
@@ -38,7 +40,7 @@ impl Credentials {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum CredentialsError {
+pub enum CredentialsVerifyError {
     #[error(
         "Password length not match the requirement: only length in the range 8-256 is acceptable"
     )]
@@ -54,6 +56,18 @@ pub fn hash_password(raw_pwd: &str) -> Result<String, argon2::password_hash::Err
     let hasher = Argon2::default();
 
     Ok(hasher.hash_password(raw_pwd.as_bytes(), &salt)?.to_string())
+}
+
+pub fn verify_password(
+    raw_pwd: &str,
+    hashed_pwd: &str,
+) -> Result<bool, argon2::password_hash::Error> {
+    let parsed_hash = PasswordHash::new(hashed_pwd)?;
+    let res = Argon2::default()
+        .verify_password(raw_pwd.as_bytes(), &parsed_hash)
+        .is_ok();
+
+    Ok(res)
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

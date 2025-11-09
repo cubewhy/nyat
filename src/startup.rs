@@ -5,7 +5,10 @@ use bytes::Bytes;
 use sqlx::PgPool;
 use tracing_actix_web::TracingLogger;
 
-use crate::{configuration::Settings, routes::register};
+use crate::{
+    configuration::Settings,
+    routes::{login, register},
+};
 
 pub struct Application {
     server: Server,
@@ -64,6 +67,7 @@ async fn run(
             .app_data(token_expire_interval.clone())
             .app_data(token_secret.clone())
             .route("/user/register", web::post().to(register))
+            .route("/user/login", web::post().to(login))
     })
     .listen(lst)?
     .run();

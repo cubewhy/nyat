@@ -1,3 +1,3 @@
 mod user;
 
-pub use user::register;
+pub use user::{login, register};
