@@ -4,6 +4,7 @@ use std::future::ready;
 use actix_web::FromRequest;
 use actix_web::error::ErrorBadRequest;
 use actix_web::error::ErrorUnauthorized;
+use actix_web::web;
 use argon2::Argon2;
 use argon2::PasswordHash;
 use argon2::PasswordHasher;
@@ -144,7 +145,7 @@ impl FromRequest for BearerAuth {
         let token = token.trim_start_matches("Bearer ");
 
         let jwt_secret = req
-            .app_data::<TokenSecret>()
+            .app_data::<web::Data<TokenSecret>>()
             .map(|secret| &secret.0)
             .unwrap();
 

@@ -209,3 +209,16 @@ impl ResponseError for LoginError {
         response_error(self.status_code(), error_msg)
     }
 }
+
+#[instrument(name = "Load user by username", skip(pool))]
+pub async fn load_user_by_username(
+    username: &str,
+    pool: &PgPool,
+) -> Result<Option<i64>, sqlx::Error> {
+    let user_id = sqlx::query!("SELECT id FROM users WHERE username LIKE $1", username)
+        .fetch_optional(pool)
+        .await?
+        .map(|user| user.id);
+
+    Ok(user_id)
+}

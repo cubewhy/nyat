@@ -17,7 +17,17 @@ async fn success_create_pm_with_valid_peer_username() {
     // check there is a chat id field in the response
     let json = res.json::<serde_json::Value>().await.unwrap();
 
-    assert!(json.as_object().unwrap().get("chat_id").is_some());
+    let chat_id = json.as_object().unwrap().get("chat_id");
+    assert!(chat_id.is_some());
+    let chat_id = chat_id.unwrap().as_i64().unwrap();
+
+    // make sure there is a chat in the database
+    let chat_entity = sqlx::query!("SELECT id FROM chats WHERE id = $1", chat_id)
+        .fetch_optional(&app.db)
+        .await
+        .unwrap();
+
+    assert!(chat_entity.is_some());
 }
 
 #[tokio::test]
