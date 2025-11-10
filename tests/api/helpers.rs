@@ -106,6 +106,36 @@ impl TestApp {
             .await
             .unwrap()
     }
+
+    pub async fn create_pm_returns_id(&self, token: &str, peer_username: &str) -> i64 {
+        let res = self.create_pm(token, peer_username).await;
+
+        let json = res.json::<serde_json::Value>().await.unwrap();
+        json.as_object()
+            .unwrap()
+            .get("chat_id")
+            .unwrap()
+            .as_i64()
+            .unwrap()
+    }
+
+    pub async fn send_chat_message(
+        &self,
+        token: &str,
+        chat_id: i64,
+        content: &str,
+    ) -> reqwest::Response {
+        self.http_client
+            .post(format!("{}/message/send", self.address))
+            .bearer_auth(token)
+            .json(&json!({
+                "chat_id": chat_id,
+                "content": content,
+            }))
+            .send()
+            .await
+            .unwrap()
+    }
 }
 
 pub async fn spawn_app() -> TestApp {
