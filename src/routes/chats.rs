@@ -58,12 +58,34 @@ LIMIT 1;
     .map(|chat| chat.chat_id)
     {
         Some(id) => id,
-        None => todo!(), // TODO: create chat
+        None => create_pm_chat(credentials.user_id, peer_id, &pool).await?,
     };
 
     Ok(HttpResponse::Created().json(json!({
         "chat_id": chat_id,
     })))
+}
+
+async fn create_pm_chat(user_id: i64, peer_id: i64, pool: &PgPool) -> Result<i64, CreatePMError> {
+    let new_chat_id = sqlx::query_scalar!(
+        r#"
+        WITH new_chat AS (
+            INSERT INTO chats (type) VALUES ('private')
+            RETURNING id
+        )
+        INSERT INTO chat_participants (chat_id, user_id, role)
+        SELECT id, user_id, 'member'
+        FROM new_chat, (VALUES ($1::bigint), ($2::bigint)) AS users(user_id)
+        RETURNING (SELECT id FROM new_chat) AS "id!"
+        "#,
+        user_id,
+        peer_id
+    )
+    .fetch_one(pool)
+    .await
+    .context("Failed to insert chat entity")?;
+
+    Ok(new_chat_id)
 }
 
 #[derive(Debug, thiserror::Error)]
